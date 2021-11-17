@@ -125,4 +125,303 @@ spec:
         - name: project
           image: mcprn/project:latest
 
+1.05:
+
+I updated the index.js to return simple HTML page, and updated the image to registry with a new tag. Then I modified the reference of the image in the deployment.yaml to correspond the new tag.
+Next I applied the new configuration and forwarded the port with:
+kubectl port-forward hashresponse-dep-57bcc888d7-dj5vk 3003:3000
+
+Then my page was visible in the localhost:3003
+
+1.06:
+
+service.yaml:
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: project-svc
+spec:
+  type: NodePort
+  selector:
+    app: project
+  ports:
+    - name: http
+      nodePort: 30080
+      protocol: TCP
+      port: 3003
+      targetPort: 3000
+
+The file service.yaml is place in manifests directory with old deployment.yaml. Commands ran:
+k3d cluster create --port 8082:30080@agent:0 -p 8081:80@loadbalancer --agents 2
+kubectl apply -f manifests/service.yaml 
+kubectl apply -f manifests/deployment.yaml
+
+Now the application is available in localhost:8082
+
+1.07:
+
+For this one I had to make modifications to my log output app. I changed it nodejs / express app.
+
+index.js
+
+const express = require('express')
+const app = express()
+const port = 4000
+const randomstring = require('randomstring');
+const timestamp = require('time-stamp');
+
+function getTimeStamp() {
+  return timestamp.utc('[YYYY:MM:DD:mm:ss]') + " : " + randomstring.generate()
+}
+
+app.get('/', (req, res) => {
+  res.send(getTimeStamp())
+})
+
+console.log()
+
+app.listen(port, () => {
+  console.log(`Server started in port ${port}`)
+  setInterval(() => {console.log(getTimeStamp())}, 5000);
+})
+
+
+
+package.json:
+
+{
+  "name": "logoutput",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.1",
+    "randomstring": "^1.2.1",
+    "time-stamp": "^2.2.0"
+  }
+}
+
+deployment.yaml:
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logoutput-dep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logoutput
+  template:
+    metadata:
+      labels:
+        app: logoutput
+    spec:
+      containers:
+        - name: logoutput
+          image: mcprn/logoutput:0.3
+
+ingress.yaml:
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcprn-ingress
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: logoutput-svc
+            port:
+              number: 2345
+
+service.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: logoutput-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: logoutput
+  ports:
+    - port: 2345
+      protocol: TCP
+      targetPort: 4000
+
+updated the image:
+
+docker build . -t logoutput:0.3
+docker tag logoutput mcprn/logoutput:0.3
+docker push mcprn/logoutput:0.3
+
+and applied the change (all the yaml files are in manifests folder):
+kubectl apply -f manifests/
+
+This way I could access to localhost:8081 and see the timestamp and random string in browser.
+
+1.08:
+
+service.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: project-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: project
+  ports:
+    - port: 2345
+      protocol: TCP
+      targetPort: 3000
+
+ingress.yaml:
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcprn-ingress-project
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: project-svc
+            port:
+              number: 2345
+
+The deployment.yaml remained unchanged. I removed the logoutput configurations and applied these. Then localhost:8081 responded with a web page.
+
+1.09:
+
+I created a new application ping-pong:
+
+package.json:
+
+{
+  "name": "ping-pong",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.1"
+  }
+}
+
+index.js:
+
+const express = require('express')
+const app = express()
+const port = 3300
+let reqs = 0;
+app.all('*', (req, res) => {
+  res.send('<p>pong ' + reqs + ' </p>')
+  reqs ++;
+})
+
+app.listen(port, () => {
+  console.log(`Server started in port ${port}`)
+})
+
+Built and pushed the image:
+
+docker build . -t ping-pong
+docker tag ping-pong mcprn/ping-pong
+docker push mcprn/ping-pong:latest
+
+then I stopped all services and ingresses.
+
+I had one ingress.yaml:
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcprn-ingresss
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: logoutput-svc
+            port:
+              number: 2345
+      - path: /pingpong
+        pathType: Prefix
+        backend:
+          service:
+            name: pingpong-svc
+            port:
+              number: 2346
+
+pingpong service.yaml:
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: pingpong-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: pingpong
+  ports:
+    - port: 2346
+      protocol: TCP
+      targetPort: 3300
+
+logoutput service.yaml:
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: logoutput-svc
+spec:
+  type: ClusterIP
+  selector:
+    app: logoutput
+  ports:
+    - port: 2345
+      protocol: TCP
+      targetPort: 4000
+
+Now when all started, I can access.
+localhost:8081 = log output
+localhost:8081/pingpong = pong + current count
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
