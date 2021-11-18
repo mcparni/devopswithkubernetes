@@ -280,10 +280,10 @@ kubectl apply -f manifests/
 ```
 This way I could access to localhost:8081 and see the timestamp and random string in browser.
 
-1.08:
+## 1.08:
 
-service.yaml
-
+**service.yaml**
+```
 apiVersion: v1
 kind: Service
 metadata:
@@ -296,9 +296,9 @@ spec:
     - port: 2345
       protocol: TCP
       targetPort: 3000
-
-ingress.yaml:
-
+```
+**ingress.yaml:**
+```
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -314,15 +314,14 @@ spec:
             name: project-svc
             port:
               number: 2345
-
+```
 The deployment.yaml remained unchanged. I removed the logoutput configurations and applied these. Then localhost:8081 responded with a web page.
 
-1.09:
-
+## 1.09:
 I created a new application ping-pong:
 
-package.json:
-
+**package.json:**
+```
 {
   "name": "ping-pong",
   "version": "1.0.0",
@@ -337,9 +336,9 @@ package.json:
     "express": "^4.17.1"
   }
 }
-
-index.js:
-
+```
+**index.js:**
+```
 const express = require('express')
 const app = express()
 const port = 3300
@@ -352,17 +351,17 @@ app.all('*', (req, res) => {
 app.listen(port, () => {
   console.log(`Server started in port ${port}`)
 })
-
+```
 Built and pushed the image:
-
+```
 docker build . -t ping-pong
 docker tag ping-pong mcprn/ping-pong
 docker push mcprn/ping-pong:latest
+```
+then I stopped all services and ingresses.  
 
-then I stopped all services and ingresses.
-
-I had one ingress.yaml:
-
+I had one **ingress.yaml:**
+```
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -385,9 +384,9 @@ spec:
             name: pingpong-svc
             port:
               number: 2346
-
-pingpong service.yaml:
-
+```
+pingpong **service.yaml:**
+```
 apiVersion: v1
 kind: Service
 metadata:
@@ -400,9 +399,9 @@ spec:
     - port: 2346
       protocol: TCP
       targetPort: 3300
-
-logoutput service.yaml:
-
+```
+logoutput **service.yaml:**
+```
 apiVersion: v1
 kind: Service
 metadata:
@@ -415,16 +414,15 @@ spec:
     - port: 2345
       protocol: TCP
       targetPort: 4000
+```
+Now when all started, I can access.  
+localhost:8081 = log output  
+localhost:8081/pingpong = pong + current count  
 
-Now when all started, I can access.
-localhost:8081 = log output
-localhost:8081/pingpong = pong + current count
+## 1.10:
 
-1.10:
-
-deployment.yaml:
-
-
+**deployment.yaml:**
+```
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -453,9 +451,9 @@ spec:
           volumeMounts: # Mount volume
           - name: shared-image
             mountPath: /usr/src/app/log
-
-logoutput index.js:
-
+```
+logoutput **index.js:**
+```
 const express = require('express')
 const app = express()
 const port = 4000
@@ -479,9 +477,9 @@ app.listen(port, () => {
     console.log(ts)
   }, 5000);
 })
-
-logread index.js:
-
+```
+logread **index.js:**
+```
 const express = require('express')
 const app = express()
 const port = 4400
@@ -510,12 +508,12 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
   console.log(`Server started in port ${port}`)
 })
+```
 
+## 1.11:
 
-1.11:
-
-ping-pong index.js:
-
+ping-pong **index.js:**
+```
 const express = require('express')
 const app = express()
 const port = 3300
@@ -542,9 +540,9 @@ app.listen(port, () => {
   }
   console.log(`Server started in port ${port}`)
 })
-
-pingpong deployment.yaml:
-
+```
+pingpong **deployment.yaml:**
+```
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -574,10 +572,9 @@ spec:
           volumeMounts:
           - name: shared-vol
             mountPath: /usr/src/app/log
-
-
-pingpong persistentvolume.yaml:
-
+```
+pingpong **persistentvolume.yaml:**
+```
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -599,9 +596,9 @@ spec:
           operator: In
           values:
           - k3d-k3s-default-agent-0
-
-pingpong persistentvolumeclaim.yaml:
-
+```
+pingpong **persistentvolumeclaim.yaml:**
+```
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -613,9 +610,9 @@ spec:
   resources:
     requests:
       storage: 100Mi
-
-logoutput index.js:
-
+```
+logoutput **index.js:**
+```
 const express = require('express')
 const app = express()
 const port = 4000
@@ -659,12 +656,12 @@ app.listen(port, () => {
     console.log(ts)
   }, 5000);
 })
+```
 
+## 1.12:
 
-1.12:
-
-project index.js:
-
+project **index.js:**
+```
 const express = require('express')
 const app = express()
 const port = 3000
@@ -723,10 +720,9 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
   console.log(`Server started in port ${port}`)
 })
-
-
-deployment.yaml:
-
+```
+**deployment.yaml:**
+```
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -751,12 +747,10 @@ spec:
           volumeMounts:
           - name: shared-vol
             mountPath: /usr/src/app/public/images
-
-1.13:
-
-
-project index.js:
-
+```
+## 1.13:
+project **index.js:**
+```
 const express = require('express')
 const app = express()
 const port = 3000
@@ -824,7 +818,7 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
   console.log(`Server started in port ${port}`)
 })
-
+```
 
 
 
