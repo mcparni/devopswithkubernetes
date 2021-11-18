@@ -263,7 +263,7 @@ spec:
 updated the image:
 
 docker build . -t logoutput:0.3
-docker tag logoutput mcprn/logoutput:0.3
+docker tag logoutput:0.3 mcprn/logoutput:0.3
 docker push mcprn/logoutput:0.3
 
 and applied the change (all the yaml files are in manifests folder):
@@ -410,6 +410,102 @@ spec:
 Now when all started, I can access.
 localhost:8081 = log output
 localhost:8081/pingpong = pong + current count
+
+1.10:
+
+deployment.yaml:
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logread-dep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logread
+  template:
+    metadata:
+      labels:
+        app: logread
+    spec:
+      volumes: # Define volume
+        - name: shared-image
+          emptyDir: {}
+      containers:
+        - name: logread-container
+          image: mcprn/logread:0.6
+          volumeMounts: # Mount volume
+          - name: shared-image
+            mountPath: /usr/src/app/log
+        - name: logoutput-container
+          image: mcprn/logoutput:0.6
+          volumeMounts: # Mount volume
+          - name: shared-image
+            mountPath: /usr/src/app/log
+
+logoutput index.js:
+
+const express = require('express')
+const app = express()
+const port = 4000
+const path = require('path')
+const randomstring = require('randomstring');
+const timestamp = require('time-stamp');
+const fs = require('fs');
+
+const directory = path.join('/', 'usr', 'src', 'app','log')
+const filePath = path.join(directory, 'server.log')
+
+function getTimeStamp() {
+  return timestamp.utc('[YYYY:MM:DD:mm:ss]') + " : " + randomstring.generate()
+}
+
+app.listen(port, () => {
+  console.log(`Server started in port ${port}`)
+  setInterval(() => {
+    var ts = getTimeStamp();
+    fs.writeFileSync(filePath, ts);
+    console.log(ts)
+  }, 5000);
+})
+
+logread index.js:
+
+const express = require('express')
+const app = express()
+const port = 4400
+const randomstring = require('randomstring');
+const timestamp = require('time-stamp');
+const fs = require('fs');
+const path = require('path')
+
+const directory = path.join('/', 'usr', 'src', 'app','log')
+const filePath = path.join(directory, 'server.log')
+
+app.get('/', (req, res) => {
+  const fs = require('fs')
+  let data = '';
+  try {
+    data = fs.readFileSync(filePath, 'utf8')
+  } catch (err) {
+    data = 'Error reading data';
+    console.error(err)
+
+  }
+  res.send(data)
+})
+
+
+app.listen(port, () => {
+  console.log(`Server started in port ${port}`)
+})
+
+
+
+
+
 
 
 
