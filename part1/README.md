@@ -503,6 +503,318 @@ app.listen(port, () => {
 })
 
 
+1.11:
+
+ping-pong index.js:
+
+const express = require('express')
+const app = express()
+const port = 3300
+let pings = 0;
+const fs = require('fs');
+const path = require('path')
+
+const directory = path.join('/', 'usr', 'src', 'app','log')
+const pingPath = path.join(directory, 'ping.log')
+
+app.get('/pingpong', (req, res) => {
+  pings++;
+  fs.writeFile(pingPath, pings.toString(), (err) => { if (err) throw err; });
+  res.send('<p>pong ' + pings + ' </p>');
+})
+
+app.listen(port, () => {
+  pings = 0;
+  try {
+    pings = Number(fs.readFileSync(pingPath, 'utf8'))
+  } catch (err) {
+    pings = 0;
+    console.error(err)
+  }
+  console.log(`Server started in port ${port}`)
+})
+
+pingpong deployment.yaml:
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pingpong-dep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pingpong
+  template:
+    metadata:
+      labels:
+        app: pingpong
+    spec:
+      volumes:
+        - name: shared-vol
+          persistentVolumeClaim:
+            claimName: vol-claim
+      containers:
+        - name: pingpong
+          image: mcprn/ping-pong:0.10
+          volumeMounts:
+          - name: shared-vol
+            mountPath: /usr/src/app/log
+        - name: logoutput
+          image: mcprn/logoutput:0.7
+          volumeMounts:
+          - name: shared-vol
+            mountPath: /usr/src/app/log
+
+
+pingpong persistentvolume.yaml:
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: example-pv
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 100Mi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  local:
+    path: /tmp/kube
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - k3d-k3s-default-agent-0
+
+pingpong persistentvolumeclaim.yaml:
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vol-claim
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+
+logoutput index.js:
+
+const express = require('express')
+const app = express()
+const port = 4000
+const path = require('path')
+const randomstring = require('randomstring');
+const timestamp = require('time-stamp');
+const fs = require('fs');
+
+const directory = path.join('/', 'usr', 'src', 'app','log')
+const logPath = path.join(directory, 'server.log')
+const pingPath = path.join(directory, 'ping.log')
+
+function getTimeStamp() {
+  return timestamp.utc('[YYYY:MM:DD:mm:ss]') + " : " + randomstring.generate()
+}
+
+app.get('/', (req, res) => {
+  let ts = '';
+  let pings = '';
+  try {
+    ts = fs.readFileSync(logPath, 'utf8')
+  } catch (err) {
+    ts = 'Error reading timestamp data';
+    console.error(err)
+  }
+  try {
+    pings = fs.readFileSync(pingPath, 'utf8')
+  } catch (err) {
+    pings = 'Error reading ping data';
+    console.error(err)
+  }
+  let result = ts + " :: " + "Ping / Pongs: " + pings;
+  res.send(result);
+});
+
+app.listen(port, () => {
+  console.log(`Server started in port ${port}`)
+  setInterval(() => {
+    var ts = getTimeStamp();
+    fs.writeFileSync(logPath, ts);
+    console.log(ts)
+  }, 5000);
+})
+
+
+1.12:
+
+project index.js:
+
+const express = require('express')
+const app = express()
+const port = 3000
+const fs = require('fs');
+const path = require('path')
+const request = require('request');
+
+const imageUrl = 'https://picsum.photos/600';
+const directory = path.join('/', 'usr', 'src', 'app','public','images')
+const imagePath = path.join(directory, 'image.jpg')
+
+
+let download = function(uri, filename, callback){
+  request.head(uri, function(err, res, body){    
+    request(uri).pipe(fs.createWriteStream(filename)).on('close', callback);
+  });
+};
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+
+let showPage = function(req, res) {
+  let html = `<!doctype html>
+  <html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Project</title>
+    <meta name="description" content="The Project">
+  </head>
+  
+  <body>
+    <div style="text-align: center;">
+      <img src="/images/image.jpg">
+    </div>
+  </body>
+  </html>`;
+  res.send(html);
+  
+};
+
+
+app.get('/', (req, res) => {
+  if (fs.existsSync(imagePath)) {
+    console.log("yes")
+    showPage(req, res);
+  } else {
+    download(imageUrl, imagePath, function(){
+      console.log('doewnload done');
+      showPage(req, res);
+    });
+    console.log("no image, download...")
+  }
+})
+
+app.listen(port, () => {
+  console.log(`Server started in port ${port}`)
+})
+
+
+deployment.yaml:
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: project-dep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: project
+  template:
+    metadata:
+      labels:
+        app: project
+    spec:
+      volumes:
+        - name: shared-vol
+          persistentVolumeClaim:
+            claimName: vol-claim
+      containers:
+        - name: pingpong
+          image: mcprn/project:0.8
+          volumeMounts:
+          - name: shared-vol
+            mountPath: /usr/src/app/public/images
+
+1.13:
+
+
+project index.js:
+
+const express = require('express')
+const app = express()
+const port = 3000
+const fs = require('fs');
+const path = require('path')
+const request = require('request');
+
+const imageUrl = 'https://picsum.photos/600';
+const directory = path.join('/', 'usr', 'src', 'app','public','images')
+const imagePath = path.join(directory, 'image.jpg')
+
+
+let download = function(uri, filename, callback){
+  request.head(uri, function(err, res, body){    
+    request(uri).pipe(fs.createWriteStream(filename)).on('close', callback);
+  });
+};
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+
+let showPage = function(req, res) {
+  let html = `<!doctype html>
+  <html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Project</title>
+    <meta name="description" content="The Project">
+  </head>
+  
+  <body>
+    <div style="text-align: center;">
+      <img style="max-height: 400px;" src="/images/image.jpg">
+      <form>
+        <input type="text" id="todo" placeholder="Todo (max 140 chars)" name="todo" maxlength="140">
+        <button>Add Todo</button>
+      </form>
+      <p><b>ToDos:</b></p>
+      <ul>
+        <li>Be nice to Mom</li>
+        <li>Pet your cat</li>
+        <li>Eat a healthy lunch</li>
+      <ul>
+    </div>
+  </body>
+  </html>`;
+  res.send(html);
+  
+};
+
+app.get('/', (req, res) => {
+  if (fs.existsSync(imagePath)) {
+    console.log("Image exists")
+    showPage(req, res);
+  } else {
+    download(imageUrl, imagePath, function(){
+      console.log('Download done');
+      showPage(req, res);
+    });
+    console.log("No image, download...")
+  }
+})
+
+app.listen(port, () => {
+  console.log(`Server started in port ${port}`)
+})
 
 
 
