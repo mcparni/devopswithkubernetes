@@ -1,22 +1,24 @@
-Exercises 
+# Part1 Exercises
 
-1.01:
+## 1.01:
 
-Dockerfile:
-
+**Dockerfile**:
+```
 FROM alpine:3.13
 WORKDIR /usr/src/app
 COPY script.sh /usr/src/app/script.sh
 RUN chmod +x /usr/src/app/script.sh && apk add util-linux moreutils 
 CMD sh /usr/src/app/script.sh
-
-script.sh:
+```
+**script.sh:**
+```
 #!/bin/bash
 uuid=$(uuidgen)
 echo $uuid | ts '[%Y-%m-%d %H:%M:%.S]' 
 while sleep 5; do echo $uuid | ts '[%Y-%m-%d %H:%M:%.S]'; done
-
-commands:
+```
+**commands:**
+```
 docker build . -t logoutput
 docker tag logoutput mcprn/logoutput
 docker push mcprn/logoutput:latest
@@ -24,27 +26,29 @@ docker push mcprn/logoutput:latest
 kubectl create deployment logoutput-dep --image=mcprn/logoutput 
 
 kubectl logs -f logoutput-dep-79c84dfbf4-d85mn 
+```
 
-
+```
 outputs:
 ...
 [2021-11-16 20:30:04.314763] e24bd8af-41d2-4948-85d5-aa88d2a0780e
 [2021-11-16 20:30:09.379689] e24bd8af-41d2-4948-85d5-aa88d2a0780e
 [2021-11-16 20:30:14.448124] e24bd8af-41d2-4948-85d5-aa88d2a0780e
 ...
+```
 
-1.02:
-Dockerfile:
-
+## 1.02:
+**Dockerfile:**
+```
 FROM alpine:3.13
 WORKDIR /usr/src/app
 COPY index.js .
 COPY package.json .
 RUN apk add --update nodejs && apk add --update npm && npm install 
 CMD node index.js
-
-index.js:
-
+```
+**index.js:**
+```
 const express = require('express')
 const app = express()
 const port = 3000
@@ -73,18 +77,19 @@ package.json:
     "express": "^4.17.1"
   }
 }
-
-commands:
+```
+**commands:**
+```
 docker build . -t project
 docker tag project mcprn/project
 docker push mcprn/project:latest
 kubectl create deployment project-dep --image=mcprn/project
+```
 
+## 1.03:
 
-1.03:
-
-deployment.yaml:
-
+**deployment.yaml:**
+```
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -102,11 +107,12 @@ spec:
       containers:
         - name: logoutput
           image: mcprn/logoutput:latest
+```
 
-1.04:
+## 1.04:
 
-deployment.yaml:
-
+**deployment.yaml:**
+```
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -124,19 +130,20 @@ spec:
       containers:
         - name: project
           image: mcprn/project:latest
+```
 
-1.05:
+## 1.05:
 
-I updated the index.js to return simple HTML page, and updated the image to registry with a new tag. Then I modified the reference of the image in the deployment.yaml to correspond the new tag.
-Next I applied the new configuration and forwarded the port with:
+I updated the index.js to return simple HTML page, and updated the image to registry with a new tag. Then I modified the reference of the image in the deployment.yaml to correspond the new tag. Next I applied the new configuration and forwarded the port with:
+```
 kubectl port-forward hashresponse-dep-57bcc888d7-dj5vk 3003:3000
-
+```
 Then my page was visible in the localhost:3003
 
-1.06:
+## 1.06:
 
-service.yaml:
-
+**service.yaml:**
+```
 apiVersion: v1
 kind: Service
 metadata:
@@ -151,20 +158,21 @@ spec:
       protocol: TCP
       port: 3003
       targetPort: 3000
+ ```
 
 The file service.yaml is place in manifests directory with old deployment.yaml. Commands ran:
+```
 k3d cluster create --port 8082:30080@agent:0 -p 8081:80@loadbalancer --agents 2
 kubectl apply -f manifests/service.yaml 
 kubectl apply -f manifests/deployment.yaml
-
+```
 Now the application is available in localhost:8082
 
-1.07:
+## 1.07:
 
-For this one I had to make modifications to my log output app. I changed it nodejs / express app.
-
-index.js
-
+For this one I had to make modifications to my log output app. I changed it nodejs / express app.  
+**index.js:**  
+```
 const express = require('express')
 const app = express()
 const port = 4000
@@ -185,11 +193,11 @@ app.listen(port, () => {
   console.log(`Server started in port ${port}`)
   setInterval(() => {console.log(getTimeStamp())}, 5000);
 })
+```
 
 
-
-package.json:
-
+**package.json:**
+```
 {
   "name": "logoutput",
   "version": "1.0.0",
@@ -206,9 +214,9 @@ package.json:
     "time-stamp": "^2.2.0"
   }
 }
-
-deployment.yaml:
-
+```
+**deployment.yaml:**
+```
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -226,9 +234,9 @@ spec:
       containers:
         - name: logoutput
           image: mcprn/logoutput:0.3
-
-ingress.yaml:
-
+```
+**ingress.yaml:**
+```
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -244,9 +252,9 @@ spec:
             name: logoutput-svc
             port:
               number: 2345
-
-service.yaml
-
+```
+**service.yaml**
+```
 apiVersion: v1
 kind: Service
 metadata:
@@ -259,16 +267,17 @@ spec:
     - port: 2345
       protocol: TCP
       targetPort: 4000
-
-updated the image:
-
+```
+**updated the image:**
+```
 docker build . -t logoutput:0.3
 docker tag logoutput:0.3 mcprn/logoutput:0.3
 docker push mcprn/logoutput:0.3
-
+```
 and applied the change (all the yaml files are in manifests folder):
+```
 kubectl apply -f manifests/
-
+```
 This way I could access to localhost:8081 and see the timestamp and random string in browser.
 
 1.08:
