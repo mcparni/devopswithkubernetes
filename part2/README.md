@@ -344,8 +344,97 @@ app.listen(port, () => {
 })
 ```
 ## 2.03
+**namespace command:**
+```
+kubectl create namespace logger
+```
+**all the yaml files:**
+```
+...
+metadata:
+  namespace: logger
+...
+```
 
+## 2.04
+**namespace command:**
+```
+kubectl create namespace webapp
+```
+**all the yaml files:**
+```
+...
+metadata:
+  namespace: webapp
+...
+```
+## 2.05
 
+Nothing to submit as per instructions. But I'll add my encrypted API key:
+```
+apiVersion: v1
+kind: Secret
+metadata:
+    name: pixabay-apikey
+data:
+    API_KEY: ENC[AES256_GCM,data:3oq19jhFXll0sUbOR1xowK2gTZW8vRCRKgfEpoHVG5rgwsgKRgzzmje7Q4V6mVET,iv:mGR6EECpNC/m/cdVKcUacHABbflqbPJ7sDxROxZWV24=,tag:BQinKxBuaY7yta4Cm/ZZug==,type:str]
+sops:
+    kms: []
+    gcp_kms: []
+    azure_kv: []
+    hc_vault: []
+    age:
+        - recipient: age1ud8zms4fd008924sf90uv0wjyem8cgcqf6llgs07c6zn53cq3e7sk6wkgk
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBVN3h5NmF5WUdXK00yV3hh
+            VVRhMlpHYkkrd2RrRDdFNlBKUVJ6MUQ5TkJBCkgrd2RLeVpKcytWYUpOWDErMThz
+            TjR1MzVxdWpRR3FodXk5dmNtdE14b1kKLS0tIC94WUpzcWRYU05JOWprcVpGb2tU
+            Y2xKc1pRSko0bnlGMVJCek93K2UxL1EK65cGwa2Tz7l2Mg1IrwyLFtuEdPMd5Svv
+            q/8ZmG33REAy/87Ek46SB7eMoiCRrPhi3MQVaofJ/7Zt1e0B0mDJ0w==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2021-11-23T19:58:57Z"
+    mac: ENC[AES256_GCM,data:SMHBszRgOJnWtLWNWLD5nsFBZ0uj+I3A3h8D0/aYOCqaHX+zplyPu1noPTNUq9rhY2M/HSolqqIibYMUw6FxAloyxzpp4xBfvUr+B+RIzEFl+S7ai3gO/LhOY85YuiK9oYl92CQw66Vidit53OQiAfqM9LAmJjnJ85G7YwWtcX8=,iv:xHwmsML5bnTeoxJury7FZMlfqnwdtBqzNcLo5GdABHg=,tag:eND8lIIMjZJIO+b8zo7zgw==,type:str]
+    pgp: []
+    encrypted_regex: ^(data)$
+    version: 3.7.1
+```
+## 2.06
 
+logoutput **index.js**:
+```
+...
+const MESSAGE = process.env.MESSAGE || "";
+...
+console.log(MESSAGE);
+...
+```
+
+in **deployment.yaml**:
+```
+...
+spec:
+      containers:
+        - name: logoutput
+          image: mcprn/logoutput:0.13
+          env:
+          - name: MESSAGE
+            value: "Hello there."
+...
+```
+
+**command**:
+```
+kubectl logs -f logoutput-dep-5bf84b66f-6zgk7 --namespace=logger
+```
+**outputs**:
+```
+Hello there.
+Server started in port 4000
+[2021:11:23:25:21] : Xi7oazXPS6pOCCpL41hPa2shSbx3jxXc
+[2021:11:23:25:26] : uwqEzBGb4VBf6IrTqjRnfJbn5oMGlZ45
+....
+```
+## 2.07
 
 
