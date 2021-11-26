@@ -1,4 +1,4 @@
-# Part2 Exercises
+	# Part2 Exercises
 
 ## 2.01:
 
@@ -436,5 +436,367 @@ Server started in port 4000
 ....
 ```
 ## 2.07
+ping ping **index.js**
+```
+const express = require('express')
+const app = express()
+const port = 3300
+let pings = 0;
+const { Pool, Client } = require('pg')
+const client = new Client({
+  user: process.env.USER,
+  host: process.env.HOST,
+  database: process.env.DATABASE,
+  password: process.env.POSTGRES_PASSWORD,
+  port: process.env.PORT
+});
+
+app.get('/pingpong', (req, res) => {
+  pings++;
+  client
+  .query('UPDATE pings SET ping_count = ping_count + 1')
+  .then(response => {
+    res.status(200).send(pings.toString());
+  })
+})
+
+app.listen(port, () => {
+  client.connect();
+  client
+  .query('select ping_count from pings')
+  .then(res => {
+    pings = Number(res.rows[0].ping_count);
+    console.log(`Server started in port ${port} with pings ${pings}`)
+  })
+  .catch(e => {
+    // create table
+    if(e.table === undefined) {
+      client
+      .query("CREATE TABLE IF NOT EXISTS pings (ping_count INT PRIMARY KEY DEFAULT 0)") 
+      .then(res => {
+        client
+        .query('INSERT INTO pings VALUES (0);')
+        .then(res => {
+          pings = 0;
+          console.log(`Server started in port ${port} with pings ${pings}`)
+        }).catch(e => console.log(e))
+      }).catch(e => console.log(e))
+    } else {
+      console.log(e)
+    }
+    })
+})
+
+```
+ping pong **deployment.yaml**:
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: logger
+  name: pingpong-dep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pingpong
+  template:
+    metadata:
+      labels:
+        app: pingpong
+    spec:
+      containers:
+        - name: pingpong
+          image: mcprn/ping-pong:0.16
+          env:
+          - name: POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: postgres-secret-config
+                key: password
+          - name: MESSAGE
+            value: "Hello there."
+          - name: HOST
+            value: postgres-svc
+          - name: USER
+            value: postgres
+          - name: PORT
+            value: '5432'
+          - name: DATABASE
+            value: postgres
+```
+postgres **statefulset.yaml**:
+```
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  labels:
+    app: postgres
+data:
+  POSTGRES_DB: postgres
+  POSTGRES_USER: postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-svc
+  labels:
+    app: postgres
+spec:
+  ports:
+  - port: 5432
+    name: web
+  clusterIP: None
+  selector:
+    app: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres-ss
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:13.0
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret-config
+                  key: password
+          ports:
+            - name: postgres
+              containerPort: 5432
+          envFrom:
+          - configMapRef:
+              name: postgres-config
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 100Mi
+```
+**secrets.yaml**
+```
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret-config
+type: Opaque
+data:
+  password: <base64-encoded-secret-here>
+```
+
+## 2.08
+project uses same postgre pod as ping-pong  
+project **deployment.yaml**:
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: webapp
+  name: project-dep
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: project
+  template:
+    metadata:
+      labels:
+        app: project
+    spec:
+      volumes:
+        - name: shared-vol
+          persistentVolumeClaim:
+            claimName: vol-claim
+      containers:
+        - name: project
+          image: mcprn/project:0.14
+          env:
+          - name: POSTGRES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: postgres-secret-config
+                key: password
+          - name: MESSAGE
+            value: "Hello there."
+          - name: HOST
+            value: postgres-svc
+          - name: USER
+            value: postgres
+          - name: PORT
+            value: '5432'
+          - name: DATABASE
+            value: postgres
+          volumeMounts:
+          - name: shared-vol
+            mountPath: /usr/src/app/public/images
+
+```
+project **index.js**:
+```
+const express = require('express')
+const app = express()
+const port = 3000
+const fs = require('fs');
+const path = require('path')
+const request = require('request');
+const axios = require('axios');
+
+const imageUrl = 'https://picsum.photos/600';
+const directory = path.join('/', 'usr', 'src', 'app','public','images')
+const imagePath = path.join(directory, 'image.jpg')
+
+const backend = 'http://database-svc/todos';
+
+let download = function(uri, filename, callback){
+  request.head(uri, function(err, res, body){    
+    request(uri).pipe(fs.createWriteStream(filename)).on('close', callback);
+  });
+};
+var bodyParser = require('body-parser')
+var cors = require('cors')
+app.use(bodyParser.json())
+app.use(cors())
+app.use(express.static(path.join(__dirname, 'public')));
+
+const { Pool, Client } = require('pg')
+
+let portNumber = Number(process.env.PORT);
+
+const client = new Client({
+  user: process.env.USER,
+  host: process.env.HOST,
+  database: process.env.DATABASE,
+  password: process.env.POSTGRES_PASSWORD,
+  port: portNumber,
+});
+
+client.connect();
+
+
+let initData = function(req, res) {
+  client
+  .query('select todo from todos')
+  .then(response => {
+    todos = response.rows;
+    console.log(`Server started in port ${port}`)
+    showPage(req, res, todos);
+  })
+  .catch(e => {
+    // create table
+    if(e.table === undefined) {
+      client
+      .query("CREATE TABLE  IF NOT EXISTS todos(id SERIAL PRIMARY KEY,todo varchar(140))") 
+      .then(response => {
+        todos = [];
+        console.log(`Server started in port ${port}`)
+        showPage(req, res, todos);
+      }).catch(e => console.log(e))
+    } else {
+      console.log(e)
+    }
+  })
+}
+
+let showPage = function(req, res, todos) {
+  let todoHTML = '';
+  for(let i = 0; i < todos.length; i++) {
+    todoHTML += `<li>${todos[i].todo.toString()}</li>`;
+  }
+  let html = `<!doctype html>
+  <html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Project</title>
+    <meta name="description" content="The Project">
+  </head>
+  
+  <body>
+    <div style="text-align: center;">
+      <img style="max-height: 400px;" src="/images/image.jpg">
+        <div>
+          <input type="text" id="todo" placeholder="Todo (max 140 chars)" name="todo" maxlength="140">
+          <button onclick="send();">Add Todo</button>
+        </div>
+      <p><b>ToDos:</b></p>
+      <ul>
+        ${todoHTML}
+      <ul>
+    </div>
+    <script>
+      function send() {
+        let todoEl = document.getElementById("todo");
+        let todo = todoEl.value;
+        let data = {todo};
+        fetch("/", {
+          method: "POST",
+          headers: {'Content-Type': 'application/json'}, 
+          body: JSON.stringify(data)
+        }).then(res => {
+          if(res.status == 200) {
+            window.location.replace("/")
+            //console.log(res)
+          }
+        })
+      }
+    </script>
+  </body>
+  </html>`;
+  res.send(html);
+  
+};
+
+app.post('/',  (req, response) => {
+  let text = 'INSERT INTO todos(todo) VALUES ($1) RETURNING *';
+  let values = [req.body.todo];
+  client.query(text, values, (err, res) => {
+    if (err) {
+      console.log(err.stack);
+    } else {
+      response.sendStatus(200)
+    }
+  });
+});
+
+app.get('/', (req, res) => {
+  if (fs.existsSync(imagePath)) {
+    console.log("Image exists")
+    initData(req, res);
+  } else {
+    download(imageUrl, imagePath, function(){
+      console.log('Download done');
+      initData(req, res);
+    });
+    console.log("No image, download...")
+  }
+})
+
+app.listen(port, () => {
+  console.log(`Server started in port ${port}`)
+})
+
+```
+## 2.09
 
 
