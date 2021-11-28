@@ -798,5 +798,203 @@ app.listen(port, () => {
 
 ```
 ## 2.09
+new Dockerfile for the project, which creates a script, which is to be run scheduled:
+```
+FROM alpine:3.13
+WORKDIR /usr/src/app
+RUN apk add --update curl && \
+echo '#!/bin/sh' > script.sh && \
+echo 'curl -i "https://en.wikipedia.org/wiki/Special:Random" > test.txt &&' >> script.sh && \
+echo 'LOCATION=$(grep location: test.txt) && ' >> script.sh && \
+echo 'echo $LOCATION > test.txt &&' >> script.sh && \
+echo 'LOCATION=$(sed "s/location: //" test.txt) &&' >> script.sh && \
+echo 'rm test.txt &&' >> script.sh && \
+echo 'echo "{\"todo\":\"Read: " > file.txt &&' >> script.sh && \
+echo 'echo $LOCATION >> file.txt &&' >> script.sh && \
+echo 'echo "\"}" >> file.txt &&' >> script.sh && \
+echo 'sending request: ' > sent.txt && \
+echo 'curl -X POST -H "Content-Type: application/json" -d @file.txt http://127.0.0.1:3000/' >> script.sh && \
+chmod +x script.sh
 
+CMD node index.js
+```
+and the schedules (every day at 01:00) **job.yaml**:
+```
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sendlink
+spec:
+  schedule: "0 1 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: project
+            image: mcprn/project:0.16
+            command:
+            - /bin/sh
+            - -c
+            - /usr/src/app/script.sh
+          restartPolicy: Never
+```
+
+## 2.10
+project **index.js** :
+```
+const express = require('express')
+const app = express()
+const port = 3000
+const fs = require('fs');
+const path = require('path')
+const request = require('request');
+const winston = require('winston');
+const imageUrl = 'https://picsum.photos/600';
+const directory = path.join('/', 'usr', 'src', 'app','public','images')
+const imagePath = path.join(directory, 'image.jpg')
+
+let download = function(uri, filename, callback){
+  request.head(uri, function(err, res, body){    
+    request(uri).pipe(fs.createWriteStream(filename)).on('close', callback);
+  });
+};
+var bodyParser = require('body-parser')
+var cors = require('cors')
+app.use(bodyParser.json())
+app.use(cors())
+app.use(express.static(path.join(__dirname, 'public')));
+
+const { Pool, Client } = require('pg')
+
+let portNumber = Number(process.env.PORT);
+
+const client = new Client({
+  user: process.env.USER,
+  host: process.env.HOST,
+  database: process.env.DATABASE,
+  password: process.env.POSTGRES_PASSWORD,
+  port: portNumber,
+});
+
+client.connect();
+
+const logger = winston.createLogger({
+  level: 'info',
+  transports: [
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: './server.log' })
+  ]
+})
+
+let initData = function(req, res) {
+  client
+  .query('select todo from todos')
+  .then(response => {
+    todos = response.rows;
+    console.log(`Server started in port ${port}`)
+    showPage(req, res, todos);
+  })
+  .catch(e => {
+    // create table
+    if(e.table === undefined) {
+      client
+      .query("CREATE TABLE  IF NOT EXISTS todos(id SERIAL PRIMARY KEY,todo varchar(140))") 
+      .then(response => {
+        todos = [];
+        console.log(`Server started in port ${port}`)
+        showPage(req, res, todos);
+      }).catch(e => console.log(e))
+    } else {
+      console.log(e)
+    }
+  })
+}
+
+let showPage = function(req, res, todos) {
+  let todoHTML = '';
+  for(let i = 0; i < todos.length; i++) {
+    todoHTML += `<li>${todos[i].todo.toString()}</li>`;
+  }
+  let html = `<!doctype html>
+  <html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Project</title>
+    <meta name="description" content="The Project">
+  </head>
+  
+  <body>
+    <div style="text-align: center;">
+      <img style="max-height: 400px;" src="/images/image.jpg">
+        <div>
+          <input type="text" id="todo" placeholder="Todo (max 140 chars)" name="todo" maxlength="140">
+          <button onclick="send();">Add Todo</button>
+        </div>
+      <p><b>ToDos:</b></p>
+      <ul>
+        ${todoHTML}
+      <ul>
+    </div>
+    <script>
+      function send() {
+        let todoEl = document.getElementById("todo");
+        let todo = todoEl.value;
+        let data = {todo};
+        fetch("/", {
+          method: "POST",
+          headers: {'Content-Type': 'application/json'}, 
+          body: JSON.stringify(data)
+        }).then(res => {
+          if(res.status == 200) {
+            window.location.replace("/")
+            //console.log(res)
+          }
+        })
+      }
+    </script>
+  </body>
+  </html>`;
+  res.send(html);
+  
+};
+
+app.post('/',  (req, response) => {
+  if(req.body.todo.length > 140) {
+    logger.error(`POST / Post body too large ::`)
+    logger.error(req)
+    response.sendStatus(413);
+    return;
+  }
+  let text = 'INSERT INTO todos(todo) VALUES ($1) RETURNING *';
+  let values = [req.body.todo];
+  client.query(text, values, (err, res) => {
+    if (err) {
+      logger.error(`POST / ${err.stack}`)
+    } else {
+      logger.info(`POST / Post success :: ${req.body.todo}`)
+      response.sendStatus(200)
+    }
+  });
+});
+
+app.get('/', (req, res) => {
+  logger.info(`GET /`)
+  if (fs.existsSync(imagePath)) {
+    logger.info(`GET / Image exists`)
+    initData(req, res);
+  } else {
+    download(imageUrl, imagePath, function(){
+      logger.info(`GET / Image download done.`)
+      initData(req, res);
+    });
+    logger.info(`GET / Image not present. Downloading`)
+  }
+})
+
+app.listen(port, () => {
+  logger.info(`Server started in port ${port}`)
+})
+```
 
